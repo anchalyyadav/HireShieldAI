@@ -1,0 +1,18 @@
+{
+  "name": "hireshield-ai",
+  "version": "1.0.0",
+  "description": "AI-powered job/internship message scam detector for students",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node api/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.8"
+  }
+}
