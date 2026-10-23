@@ -194,7 +194,7 @@ export function scannerPage() {
 
                   <!-- Action buttons -->
                   <div class="scan-actions">
-                    <button type="submit" class="btn btn-primary btn-lg scan-cta" id="scan-submit">${icon('scan')} Analyze Message</button>
+                    <button type="submit" class="btn btn-primary btn-lg scan-cta" id="scan-submit" disabled>${icon('scan')} Analyze Message</button>
                     <button type="button" class="btn btn-secondary scan-sample-btn" id="sample-btn">${icon('fileSearch')} Try Sample Message</button>
                   </div>
 
@@ -263,11 +263,12 @@ export function scannerPage() {
 
       let selectedSource = 'other';
 
-      // Char count + indicator + clear button
+      // Char count + indicator + clear button + submit button state
       function updateCharCount() {
         const len = textarea.value.length;
         charCount.textContent = `${len} character${len !== 1 ? 's' : ''}`;
         clearBtn.style.display = len > 0 ? 'inline-flex' : 'none';
+        submitBtn.disabled = len < 20;
 
         // Length indicator
         let indicatorClass, indicatorText;
