@@ -3,6 +3,7 @@ import { icon } from '../js/icons.js';
 import { toast } from '../js/toast.js';
 import { supabase, isSupabaseConfigured } from '../js/supabaseClient.js';
 import { getCurrentUser, getSystemStatus } from '../js/shell.js';
+import { saveScanResult } from '../js/scanState.js';
 
 const SAMPLE_MESSAGE = `Congratulations! You have been selected for a remote internship at TechVision Solutions with a guaranteed ₹45,000 monthly stipend. Pay a refundable registration fee of ₹999 today to confirm your offer. Limited seats available — respond within 24 hours. Send your Aadhaar card and bank details immediately to hr@techvision-solutions-online.com or WhatsApp +91-98765-43210.`;
 
@@ -366,7 +367,11 @@ export function scannerPage() {
 
           const data = await resp.json();
 
-          // Try to persist to database
+          // Save to shared state so the Results page can display it
+          saveScanResult(data, message);
+
+          // Try to persist to database for history
+          let scanId = null;
           if (isSupabaseConfigured) {
             const user = getCurrentUser();
             if (user) {
@@ -387,19 +392,18 @@ export function scannerPage() {
                 .maybeSingle();
 
               if (!insertError && inserted) {
-                toast.success('Analysis complete', 'Redirecting to your detailed results...');
-                setTimeout(() => {
-                  history.pushState({}, '', `/results/${inserted.id}`);
-                  window.dispatchEvent(new PopStateEvent('popstate'));
-                }, 600);
-                return;
+                scanId = inserted.id;
               }
             }
           }
 
-          // Fallback: show inline result
-          resultEl.innerHTML = renderInlineResult(data, message);
-          wireInlineResultActions(resultEl, data, message);
+          // Always navigate to the full Results page
+          toast.success('Analysis complete', 'Opening your detailed results...');
+          const resultsPath = scanId ? `/results/${scanId}` : '/results';
+          setTimeout(() => {
+            history.pushState({}, '', resultsPath);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }, 600);
         } catch (err) {
           resultEl.innerHTML = `
             <div class="scan-error-card">

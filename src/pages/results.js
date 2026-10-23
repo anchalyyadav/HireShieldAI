@@ -2,6 +2,7 @@
 import { icon } from '../js/icons.js';
 import { supabase, isSupabaseConfigured } from '../js/supabaseClient.js';
 import { getCurrentUser, getSystemStatus } from '../js/shell.js';
+import { getScanResult } from '../js/scanState.js';
 
 export function resultsPage() {
   return {
@@ -20,36 +21,79 @@ export function resultsPage() {
         </div>
       `;
 
-      if (!isSupabaseConfigured || !id) {
-        renderError(el, 'Results unavailable', 'Database is not configured or no scan ID was provided.');
-        return;
-      }
+      const status = getSystemStatus();
 
-      const user = getCurrentUser();
-      if (!user) {
-        renderError(el, 'Sign in required', 'Please sign in to view your analysis results.');
-        return;
-      }
-
-      try {
-        const { data: scan, error } = await supabase
-          .from('scans')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (!scan) {
-          renderError(el, 'Scan not found', 'This scan may have been deleted or does not belong to your account.');
+      // Case 1: We have a DB scan ID — fetch from database
+      if (id) {
+        if (!isSupabaseConfigured) {
+          renderError(el, 'Results unavailable', 'Database is not configured. Run a new scan to view results.');
           return;
         }
+        const user = getCurrentUser();
+        if (!user) {
+          renderError(el, 'Sign in required', 'Please sign in to view your analysis results.');
+          return;
+        }
+        try {
+          const { data: scan, error } = await supabase
+            .from('scans')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
 
-        const status = getSystemStatus();
-        renderResults(el, scan, status);
-      } catch (err) {
-        renderError(el, 'Failed to load results', err.message || 'An unexpected error occurred.');
+          if (error) throw error;
+          if (!scan) {
+            // DB lookup failed — try shared state as fallback
+            const cached = getScanResult();
+            if (cached) {
+              renderResults(el, buildScanFromCache(cached), status);
+              return;
+            }
+            renderError(el, 'Scan not found', 'This scan may have been deleted or does not belong to your account.');
+            return;
+          }
+
+          renderResults(el, scan, status);
+        } catch (err) {
+          // DB error — try shared state as fallback
+          const cached = getScanResult();
+          if (cached) {
+            renderResults(el, buildScanFromCache(cached), status);
+            return;
+          }
+          renderError(el, 'Failed to load results', err.message || 'An unexpected error occurred.');
+        }
+        return;
       }
+
+      // Case 2: No ID — try shared state from the scanner
+      const cached = getScanResult();
+      if (cached) {
+        renderResults(el, buildScanFromCache(cached), status);
+        return;
+      }
+
+      // Case 3: No ID and no cached result — ask user to run a scan
+      renderError(el, 'No results to display', 'Run a scan from the Message Scanner to see analysis results here. If you refreshed this page, the scan needs to be run again.', '/scanner', 'Scan a Message');
     }
+  };
+}
+
+// Build a scan-like object from the cached scanner result
+function buildScanFromCache(cached) {
+  const r = cached.result || {};
+  return {
+    id: r.id || null,
+    message_text: cached.message || '',
+    risk_level: r.riskLevel || 'medium',
+    risk_score: r.riskScore || 0,
+    risk_label: r.riskLabel || (r.riskLevel || 'medium').toUpperCase(),
+    summary: r.summary || '',
+    red_flags: r.redFlags || [],
+    recommendations: r.recommendations || [],
+    analysis_method: r.analysisMethod || 'unknown',
+    is_preview: r.preview || false,
+    created_at: new Date(cached.timestamp || Date.now()).toISOString(),
   };
 }
 
@@ -537,7 +581,9 @@ function truncate(str, maxLen) {
   return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
 }
 
-function renderError(el, title, msg) {
+function renderError(el, title, msg, linkHref, linkLabel) {
+  const href = linkHref || '/scanner';
+  const label = linkLabel || 'Scan a Message';
   el.innerHTML = `
     <div class="results-page">
       <div class="results-back">
@@ -547,7 +593,7 @@ function renderError(el, title, msg) {
         <div class="results-error-icon">${icon('alert')}</div>
         <h3>${escapeHtml(title)}</h3>
         <p class="text-muted">${escapeHtml(msg)}</p>
-        <a href="/scanner" class="btn btn-primary mt-2" data-link>${icon('scan')} Scan a Message</a>
+        <a href="${href}" class="btn btn-primary mt-2" data-link>${icon('scan')} ${escapeHtml(label)}</a>
       </div>
     </div>
   `;
