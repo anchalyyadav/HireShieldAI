@@ -4,6 +4,7 @@ import { toast } from '../js/toast.js';
 import { supabase, isSupabaseConfigured } from '../js/supabaseClient.js';
 import { getCurrentUser, getSystemStatus } from '../js/shell.js';
 import { saveScanResult } from '../js/scanState.js';
+import { analyzeWithRules } from '../js/ruleEngine.js';
 
 const SAMPLE_MESSAGE = `Congratulations! You have been selected for a remote internship at TechVision Solutions with a guaranteed ₹45,000 monthly stipend. Pay a refundable registration fee of ₹999 today to confirm your offer. Limited seats available — respond within 24 hours. Send your Aadhaar card and bank details immediately to hr@techvision-solutions-online.com or WhatsApp +91-98765-43210.`;
 
@@ -355,18 +356,31 @@ export function scannerPage() {
         runScanningSteps(resultEl);
 
         try {
-          const resp = await fetch('/api/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, mode: selectedMode }),
-          });
+          let data;
 
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error || 'Analysis failed');
+          try {
+            const resp = await fetch('/api/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message, mode: selectedMode }),
+            });
+
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              throw new Error(err.error || 'Analysis failed');
+            }
+
+            data = await resp.json();
+          } catch (apiErr) {
+            // API server unreachable — fall back to client-side rule engine for rule-based/auto modes
+            if (selectedMode === 'ai') {
+              throw new Error('AI analysis requires the analysis server, which is not running. Switch to Rule-Based mode.');
+            }
+            data = analyzeWithRules(message);
+            if (selectedMode === 'auto') {
+              data.fallbackFromAI = true;
+            }
           }
-
-          const data = await resp.json();
 
           // Save to shared state so the Results page can display it
           saveScanResult(data, message);
